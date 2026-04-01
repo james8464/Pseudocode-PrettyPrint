@@ -1,20 +1,33 @@
 # pseudocode pretty print
 
-i built this to convert cambridge-style pseudocode into nicely formatted rtf files with syntax highlighting. it's based on the pseudocode convention from cambridge international's syllabus - you can find the full guide [here](https://www.cambridgeinternational.org/Images/697401-2026-pseudocode-guide-for-teachers.pdf).
+converts cambridge-style pseudocode to rtf with syntax highlighting. the pseudocode format follows the cambridge international syllabus - see the [full guide](https://www.cambridgeinternational.org/Images/697401-2026-pseudocode-guide-for-teachers.pdf) for reference.
 
-## how to run it
+the colour scheme is based on xcode's prettyprint style in light mode. apple's design guidelines are available [here](https://developer.apple.com/design/human-interface-guidelines/color).
 
-two ways to use it:
+## usage
 
-1. **interactive** - run `python3 main.py`, paste your code, then type `END` on its own line when you're done
-2. **piped** - `python3 main.py < yourfile.txt`
+run interactively:
+```bash
+python3 main.py
+```
+paste your pseudocode, then type `END` on its own line to finish.
 
-output goes to the `outputs/` folder.
+or pipe input from a file:
+```bash
+python3 main.py < input.txt
+```
 
-## what it supports
+output files are written to the `outputs/` folder.
+
+rtf was chosen because it preserves syntax highlighting when pasted into microsoft word or apple pages.
+
+## customising colours
+
+colours are defined in `core/constants.py` in the `COLOURS` dictionary. each entry is (red, green, blue) in hex format, with inline comments indicating what each colour is used for.
+
+## supported syntax
 
 ### keywords
-all the usual cambridge ones:
 ```
 IF, THEN, ELSE, ENDIF
 FOR ... TO ... STEP ... NEXT
@@ -37,7 +50,6 @@ TRUE, FALSE
 ```
 
 ### assignment
-uses the ← symbol:
 ```
 x ← 5
 name ← "alice"
@@ -45,20 +57,19 @@ count ← count + 1
 ```
 
 ### comments
-single line with //:
+single-line comments using `//`:
 ```
 // this is a comment
 ```
 
 ### strings
-anything in double quotes:
+delimited by double quotes:
 ```
 PRINT "hello world"
 message ← "enter your name: "
 ```
 
 ### types
-when declaring variables:
 ```
 DECLARE x : INTEGER
 DECLARE name : STRING
@@ -69,18 +80,19 @@ DECLARE today : DATE
 ```
 
 ### operators
-- arithmetic: +, -, *, /, DIV, MOD
-- comparison: =, <>, <, >, <=, >=
-- logical: AND, OR, NOT
+- arithmetic: `+`, `-`, `*`, `/`, `DIV`, `MOD`
+- comparison: `=`, `<>`, `<`, `>`, `<=`, `>=`
+- logical: `AND`, `OR`, `NOT`
 
-### special identifiers
-certain things get highlighted differently:
-- **keywords** - bold purple
-- **strings** - red
-- **calls/procedures** - bold purple (anything after CALL, or starting with a capital, or followed by `(`)
-- **members** - blue (anything after a dot, like `object.property`)
-- **comments** - grey
-- **indices** - dark blue (numbers after a dot, like `arr.0`)
+### syntax highlighting
+| element | colour |
+|---------|--------|
+| keywords | bold purple |
+| strings | red |
+| calls / procedures | bold purple |
+| members (after `.`) | blue |
+| comments | grey |
+| indices (after `.`) | dark blue |
 
 ## example
 
@@ -98,7 +110,3 @@ NEXT i
 
 OUTPUT result
 ```
-
-this gets turned into a formatted rtf file with syntax highlighting.
-
-that's pretty much it. hope it's useful!
