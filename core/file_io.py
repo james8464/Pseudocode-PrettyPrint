@@ -1,46 +1,186 @@
-import sys
+"""Input, output and file-handling helpers."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+import os
 from pathlib import Path
-from typing import List, Optional
+import sys
+import tempfile
 
-from core.rtf import render_rtf
-from core.tokeniser import tokenise
-
-
-_OUTPUT_DIR = Path(__file__).parent.parent / "outputs"
+from core.rtf import write_rtf
+from core.tokeniser import LexWarning, Token, tokenise
 
 
-def read_input() -> Optional[str]:
+class InputOutcome(str, Enum):
+    TEXT = "text"
+    EMPTY = "empty"
+    QUIT = "quit"
+    EOF = "eof"
+
+
+@dataclass(frozen=True, slots=True)
+class InputResult:
+    outcome: InputOutcome
+    text: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RenderResult:
+    tokens: tuple[Token, ...]
+    warnings: tuple[LexWarning, ...]
+
+
+def read_input() -> InputResult:
+    """Read one block from stdin.
+
+    Piped input is read to EOF.  On a terminal, lines are read until a
+    sentinel line (``END`` or ``:end``) or ``QUIT``; Ctrl-D is EOF and
+    Ctrl-C is treated as a quit request.
+    """
+
     if not sys.stdin.isatty():
-        _text = sys.stdin.read()
-        return _text if _text.strip() else None
+        text = sys.stdin.read()
+        if not text.strip():
+            return InputResult(InputOutcome.EMPTY)
+        return InputResult(InputOutcome.TEXT, text)
 
-    print("Paste your pseudocode. Type END on its own line to finish.")
-    print("Type QUIT to exit.\n")
-    _lines: List[str] = []
+    lines: list[str] = []
     while True:
         try:
-            _line = input()
-        except (EOFError, KeyboardInterrupt):
-            return None
-        _line_stripped = _line.strip()
-        if _line_stripped.upper() == "QUIT":
-            return None
-        if _line_stripped.upper() in {"END", ":END"}:
+            line = input()
+        except EOFError:
+            return InputResult(InputOutcome.EOF)
+        except KeyboardInterrupt:
+            return InputResult(InputOutcome.QUIT)
+
+        stripped = line.strip()
+        if stripped.upper() == "QUIT":
+            return InputResult(InputOutcome.QUIT)
+        if stripped.upper() in {"END", ":END"}:
             break
-        _lines.append(_line)
-    return "\n".join(_lines) + "\n" if _lines else None
+        lines.append(line)
+
+    if not lines:
+        return InputResult(InputOutcome.EMPTY)
+    return InputResult(InputOutcome.TEXT, "\n".join(lines) + "\n")
 
 
-def process_input(_text: str, _counter: int) -> None:
-    _result = tokenise(_text)
-    for _warning in _result.warnings:
-        print(f"Warning: {_warning}", file=sys.stderr)
+def read_file(path: Path) -> str:
+    """Read a UTF-8 input file."""
+    return path.read_text(encoding="utf-8")
 
-    _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    _rtf = render_rtf(_result.tokens)
-    _out_name = f"pretty_pseudocode_{_counter}.rtf" if _counter > 1 else "pretty_pseudocode.rtf"
-    _out_path = _OUTPUT_DIR / _out_name
-    with open(_out_path, "w", encoding="utf-8") as _f:
-        _f.write(_rtf)
 
-    print(f"Wrote: {_out_path}\n")
+def render_document(text: str) -> RenderResult:
+    """Tokenise *text* and return its tokens and diagnostics."""
+    result = tokenise(text)
+    return RenderResult(tokens=result.tokens, warnings=result.warnings)
+
+
+def _output_name(counter: int) -> str:
+    if counter <= 1:
+        return "pretty_pseudocode.rtf"
+    return f"pretty_pseudocode_{counter}.rtf"
+
+
+def choose_output_path(
+    output_dir: Path,
+    *,
+    counter: int = 1,
+    force: bool = False,
+) -> Path:
+    """Choose a non-existing output path, creating the directory if needed."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if force:
+        return output_dir / _output_name(counter)
+
+    number = max(1, counter)
+    while True:
+        candidate = output_dir / _output_name(number)
+        if not candidate.exists():
+            return candidate
+        number += 1
+
+
+def unique_file_path(path: Path) -> Path:
+    """Return *path*, or a numbered sibling if it already exists."""
+    path = Path(path)
+    if not path.exists():
+        return path
+
+    for number in range(2, 10_000):
+        candidate = path.with_name(f"{path.stem}_{number}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise FileExistsError(f"Could not find a free output name near {path}")
+
+
+def write_document(path: Path, tokens: tuple[Token, ...]) -> None:
+    """Atomically write an RTF document to *path*."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.stem}.",
+        suffix=".tmp",
+    )
+    temporary_path = Path(temporary_name)
+
+    try:
+        with os.fdopen(
+            file_descriptor,
+            "w",
+            encoding="utf-8",
+            newline="",
+        ) as stream:
+            write_rtf(tokens, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+
+        # mkstemp creates files with 0600 permissions; give the final
+        # document normal user-readable permissions.
+        os.chmod(temporary_path, 0o644)
+        os.replace(temporary_path, path)
+    except BaseException:
+        try:
+            temporary_path.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def process_input(
+    text: str,
+    *,
+    output_dir: Path | None = None,
+    output_file: Path | None = None,
+    counter: int = 1,
+    force: bool = False,
+) -> tuple[Path, RenderResult]:
+    """Render *text* and write it to a file, returning the path and result."""
+
+    result = render_document(text)
+
+    if output_file is not None:
+        destination = Path(output_file)
+        if destination.is_dir():
+            destination = choose_output_path(
+                destination,
+                counter=counter,
+                force=force,
+            )
+        elif not force:
+            destination = unique_file_path(destination)
+    else:
+        destination = choose_output_path(
+            output_dir or Path.cwd() / "outputs",
+            counter=counter,
+            force=force,
+        )
+
+    write_document(destination, result.tokens)
+    return destination, result
