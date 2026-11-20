@@ -7,11 +7,11 @@ unrecognised characters produce warnings with line/column positions.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
-import re
 
-from core.constants import KEYWORDS
+from pseudocode_prettyprint.constants import KEYWORDS
 
 
 class TokenKind(str, Enum):
@@ -100,7 +100,9 @@ def tokenise(text: str, *, max_warnings: int = _DEFAULT_MAX_WARNINGS) -> Tokenis
     limit = max(0, max_warnings)
 
     for match in TOKEN_RE.finditer(text):
-        kind = _KIND_BY_NAME[match.lastgroup]
+        group = match.lastgroup
+        assert group is not None  # every alternative is a named group
+        kind = _KIND_BY_NAME[group]
         value = match.group()
 
         if kind is TokenKind.OTHER:
@@ -129,4 +131,5 @@ def tokenise(text: str, *, max_warnings: int = _DEFAULT_MAX_WARNINGS) -> Tokenis
 
 
 def is_keyword(identifier: str) -> bool:
+    """Return whether *identifier* is a reserved word or built-in."""
     return identifier.upper() in KEYWORDS

@@ -2,9 +2,9 @@
 
 import unittest
 
-from core.tokeniser import (
-    TokenKind,
+from pseudocode_prettyprint.tokeniser import (
     TokeniseError,
+    TokenKind,
     is_keyword,
     tokenise,
 )
@@ -48,7 +48,11 @@ class TokeniserTests(unittest.TestCase):
 
     def test_leading_decimal_is_one_number(self) -> None:
         result = tokenise("x ← .5")
-        numbers = [token.text for token in result.tokens if token.kind is TokenKind.NUMBER]
+        numbers = [
+            token.text
+            for token in result.tokens
+            if token.kind is TokenKind.NUMBER
+        ]
         self.assertEqual(numbers, [".5"])
 
     def test_dot_index_remains_separate(self) -> None:
@@ -82,7 +86,9 @@ class TokeniserTests(unittest.TestCase):
 
     def test_unrecognised_characters_warn(self) -> None:
         result = tokenise("x ? y")
-        self.assertTrue(any("Unrecognised character" in str(w) for w in result.warnings))
+        self.assertTrue(
+            any("Unrecognised character" in str(w) for w in result.warnings)
+        )
 
     def test_warning_count_is_capped(self) -> None:
         result = tokenise("?" * 150)

@@ -11,18 +11,16 @@ Equivalent console entry point (after installing the package):
   pseudocode-prettyprint input.txt
 """
 
+import contextlib
 import sys
 
-from core.cli import main
-
+from pseudocode_prettyprint.cli import main
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except BrokenPipeError:
         # stdout was closed early (for example, piped into `head`).
-        try:
+        with contextlib.suppress(OSError):
             sys.stdout.close()
-        except OSError:
-            pass
-        raise SystemExit(1)
+        raise SystemExit(1) from None

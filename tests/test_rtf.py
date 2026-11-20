@@ -3,9 +3,9 @@
 import re
 import unittest
 
-from core.constants import COLOURS
-from core.rtf import _CF, build_rtf_header, render_rtf, rtf_escape
-from core.tokeniser import tokenise
+from pseudocode_prettyprint.constants import COLOURS
+from pseudocode_prettyprint.rtf import _CF, build_rtf_header, render_rtf, rtf_escape
+from pseudocode_prettyprint.tokeniser import tokenise
 
 
 def render(source: str) -> str:

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.cli import main
+from pseudocode_prettyprint.cli import main
 
 
 class CliTests(unittest.TestCase):
@@ -63,6 +63,19 @@ class CliTests(unittest.TestCase):
             self.assertEqual(status, 0)
             self.assertEqual(output.read_text(encoding="utf-8"), "old")
             self.assertTrue((Path(directory) / "report_2.rtf").exists())
+
+    def test_existing_suffixless_output_is_treated_as_a_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "input.txt"
+            source.write_text("x ← 1\n", encoding="utf-8")
+            output = Path(directory) / "report"
+            output.write_text("old", encoding="utf-8")
+
+            status, _, _ = self.run_cli([str(source), "-o", str(output)])
+
+            self.assertEqual(status, 0)
+            self.assertEqual(output.read_text(encoding="utf-8"), "old")
+            self.assertTrue((Path(directory) / "report_2").exists())
 
     def test_force_overwrites(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

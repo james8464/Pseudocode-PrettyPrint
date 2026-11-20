@@ -3,25 +3,26 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
+import contextlib
 import sys
+from pathlib import Path
 
-from core import __version__
-from core.file_io import (
+from pseudocode_prettyprint import __version__
+from pseudocode_prettyprint.file_io import (
     InputOutcome,
     choose_output_path,
-    process_input,
     read_file,
     read_input,
     render_document,
     unique_file_path,
     write_document,
 )
-from core.rtf import write_rtf
-from core.tokeniser import LexWarning, TokeniseError
+from pseudocode_prettyprint.rtf import write_rtf
+from pseudocode_prettyprint.tokeniser import LexWarning, TokeniseError
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build the command-line argument parser."""
     parser = argparse.ArgumentParser(
         prog="pseudocode-prettyprint",
         description=(
@@ -60,11 +61,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _reconfigure_stdin() -> None:
-    try:
-        sys.stdin.reconfigure(encoding="utf-8")
-    except (AttributeError, ValueError):
+    """Decode piped stdin as UTF-8 where the stream supports it."""
+    reconfigure = getattr(sys.stdin, "reconfigure", None)
+    if reconfigure is None:
         # StringIO and some test doubles do not support reconfigure().
-        pass
+        return
+    with contextlib.suppress(AttributeError, OSError, ValueError):
+        reconfigure(encoding="utf-8")
 
 
 def _resolve_output(args: argparse.Namespace) -> tuple[Path | None, Path | None]:
@@ -73,8 +76,10 @@ def _resolve_output(args: argparse.Namespace) -> tuple[Path | None, Path | None]
         return None, Path.cwd() / "outputs"
 
     output = Path(args.output)
-    if output.exists() and output.is_dir():
-        return None, output
+    if output.exists():
+        if output.is_dir():
+            return None, output
+        return output, None
     # A non-existing path without a suffix is treated as a directory;
     # `foo/` and `foo` both become Path("foo").
     if output.suffix == "":
@@ -83,6 +88,7 @@ def _resolve_output(args: argparse.Namespace) -> tuple[Path | None, Path | None]
 
 
 def _print_warnings(warnings: tuple[LexWarning, ...]) -> None:
+    """Write lexer diagnostics to stderr."""
     for warning in warnings:
         print(f"Warning: {warning}", file=sys.stderr)
 
@@ -92,6 +98,7 @@ def _process_once(
     args: argparse.Namespace,
     counter: int,
 ) -> int:
+    """Render one input block and write it; return an exit status."""
     try:
         result = render_document(text)
     except TokeniseError as error:
@@ -127,6 +134,7 @@ def _process_once(
 
 
 def _read_file_or_report(path: Path) -> str | None:
+    """Read a file, reporting encoding and OS errors to stderr."""
     try:
         return read_file(path)
     except UnicodeDecodeError:
@@ -137,6 +145,7 @@ def _read_file_or_report(path: Path) -> str | None:
 
 
 def _run_interactive(args: argparse.Namespace) -> int:
+    """Run the interactive multi-block loop."""
     print("Pseudocode formatter - interactive mode")
     print("=" * 40)
     print("Paste your pseudocode. Type END (or :end) on its own line to finish.")
@@ -164,6 +173,7 @@ def _run_interactive(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line interface and return an exit status."""
     parser = _build_parser()
     args = parser.parse_args(argv)
 
@@ -186,7 +196,15 @@ def main(argv: list[str] | None = None) -> int:
             return 130
 
     if not sys.stdin.isatty():
-        result = read_input()
+        try:
+            result = read_input()
+        except UnicodeDecodeError:
+            print("Error: stdin is not valid UTF-8", file=sys.stderr)
+            return 1
+        except KeyboardInterrupt:
+            print("\nInterrupted.", file=sys.stderr)
+            return 130
+
         if result.outcome is InputOutcome.EMPTY or result.text is None:
             print("Error: no input was provided", file=sys.stderr)
             return 1

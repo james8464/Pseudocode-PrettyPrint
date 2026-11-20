@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
+import contextlib
 import os
-from pathlib import Path
 import sys
 import tempfile
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
 
-from core.rtf import write_rtf
-from core.tokeniser import LexWarning, Token, tokenise
+from pseudocode_prettyprint.rtf import write_rtf
+from pseudocode_prettyprint.tokeniser import LexWarning, Token, tokenise
 
 
 class InputOutcome(str, Enum):
+    """The result of attempting to read one input block."""
+
     TEXT = "text"
     EMPTY = "empty"
     QUIT = "quit"
@@ -22,12 +25,16 @@ class InputOutcome(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class InputResult:
+    """One input block, or the reason no block was produced."""
+
     outcome: InputOutcome
     text: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class RenderResult:
+    """Tokens and diagnostics produced from one input block."""
+
     tokens: tuple[Token, ...]
     warnings: tuple[LexWarning, ...]
 
@@ -134,7 +141,9 @@ def write_document(path: Path, tokens: tuple[Token, ...]) -> None:
         with os.fdopen(
             file_descriptor,
             "w",
-            encoding="utf-8",
+            # rtf_escape() converts every non-ASCII character to \uN, so the
+            # document is ASCII by construction; enforce that invariant.
+            encoding="ascii",
             newline="",
         ) as stream:
             write_rtf(tokens, stream)
@@ -146,10 +155,8 @@ def write_document(path: Path, tokens: tuple[Token, ...]) -> None:
         os.chmod(temporary_path, 0o644)
         os.replace(temporary_path, path)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             temporary_path.unlink()
-        except OSError:
-            pass
         raise
 
 

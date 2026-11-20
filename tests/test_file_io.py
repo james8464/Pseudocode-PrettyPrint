@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from core.file_io import (
+from pseudocode_prettyprint.file_io import (
     InputOutcome,
     choose_output_path,
     process_input,

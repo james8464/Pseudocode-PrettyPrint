@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 import io
 import re
+from collections.abc import Sequence
 from typing import TextIO
 
-from core.constants import COLOURS, Colour
-from core.tokeniser import Token, TokenKind, is_keyword
+from pseudocode_prettyprint.constants import COLOURS, Colour
+from pseudocode_prettyprint.tokeniser import Token, TokenKind, is_keyword
 
 # RTF colours are 1-indexed; colour 0 is "auto".
 _CF: dict[Colour, int] = {
@@ -48,6 +48,7 @@ def _unicode_escape(character: str) -> str:
 
 
 def _escape_character(character: str) -> str:
+    """Escape or encode one character that cannot appear literally in RTF."""
     if character == "\\":
         return "\\\\"
     if character == "{":
@@ -102,6 +103,7 @@ def build_rtf_header() -> str:
 
 
 def build_rtf_footer() -> str:
+    """Return the RTF closing brace."""
     return _RTF_FOOTER
 
 
@@ -127,6 +129,7 @@ def _find_callables(
     tokens: Sequence[Token],
     next_non_ws: Sequence[int | None],
 ) -> frozenset[str]:
+    """Collect case-folded names introduced by declaration keywords."""
     callables: set[str] = set()
     for index, token in enumerate(tokens):
         if (
@@ -142,6 +145,8 @@ def _find_callables(
 
 
 class _RtfRenderer:
+    """Stream one token sequence to an RTF stream, tracking formatting state."""
+
     def __init__(self, tokens: Sequence[Token]) -> None:
         self._tokens = tokens
         self._next_non_ws = _next_non_ws_indices(tokens)
@@ -150,16 +155,19 @@ class _RtfRenderer:
         self._current_bold = False
 
     def _set_cf(self, stream: TextIO, colour: Colour) -> None:
+        """Emit a colour change only when the colour actually changes."""
         if self._current_cf != colour:
             stream.write(f"\\cf{_CF[colour]} ")
             self._current_cf = colour
 
     def _set_bold(self, stream: TextIO, bold: bool) -> None:
+        """Emit a bold change only when the weight actually changes."""
         if self._current_bold != bold:
             stream.write("\\b " if bold else "\\b0 ")
             self._current_bold = bold
 
     def write(self, stream: TextIO) -> None:
+        """Write the document body for the configured tokens."""
         self._set_cf(stream, Colour.BLACK)
         self._set_bold(stream, False)
 
