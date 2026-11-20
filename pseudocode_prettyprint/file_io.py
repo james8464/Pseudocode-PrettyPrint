@@ -39,15 +39,19 @@ class RenderResult:
     warnings: tuple[LexWarning, ...]
 
 
-def read_input() -> InputResult:
+def read_input(*, interactive: bool | None = None) -> InputResult:
     """Read one block from stdin.
 
     Piped input is read to EOF.  On a terminal, lines are read until a
     sentinel line (``END`` or ``:end``) or ``QUIT``; Ctrl-D is EOF and
-    Ctrl-C is treated as a quit request.
+    Ctrl-C is treated as a quit request.  ``interactive`` overrides the
+    automatic ``isatty()`` check when the caller has already decided.
     """
 
-    if not sys.stdin.isatty():
+    if interactive is None:
+        interactive = sys.stdin.isatty()
+
+    if not interactive:
         text = sys.stdin.read()
         if not text.strip():
             return InputResult(InputOutcome.EMPTY)

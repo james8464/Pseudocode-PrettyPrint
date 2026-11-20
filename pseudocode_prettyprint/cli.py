@@ -125,7 +125,7 @@ def _process_once(
             )
 
         write_document(destination, result.tokens)
-    except OSError as error:
+    except (OSError, UnicodeEncodeError) as error:
         print(f"Error: could not write output: {error}", file=sys.stderr)
         return 1
 
@@ -153,7 +153,7 @@ def _run_interactive(args: argparse.Namespace) -> int:
 
     counter = 0
     while True:
-        result = read_input()
+        result = read_input(interactive=True)
 
         if result.outcome in (InputOutcome.QUIT, InputOutcome.EOF):
             print("Exiting...")
@@ -197,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not sys.stdin.isatty():
         try:
-            result = read_input()
+            result = read_input(interactive=False)
         except UnicodeDecodeError:
             print("Error: stdin is not valid UTF-8", file=sys.stderr)
             return 1
