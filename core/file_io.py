@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from core.rtf import build_rtf_header, build_rtf_footer, render_rtf
+from core.rtf import render_rtf
 from core.tokeniser import tokenise
 
 
@@ -23,18 +23,21 @@ def read_input() -> Optional[str]:
         except (EOFError, KeyboardInterrupt):
             return None
         _line_stripped = _line.strip()
-        if _line_stripped == "QUIT":
+        if _line_stripped.upper() == "QUIT":
             return None
-        if _line_stripped == "END":
+        if _line_stripped.upper() in {"END", ":END"}:
             break
         _lines.append(_line)
     return "\n".join(_lines) + "\n" if _lines else None
 
 
 def process_input(_text: str, _counter: int) -> None:
-    _tokens = tokenise(_text)
+    _result = tokenise(_text)
+    for _warning in _result.warnings:
+        print(f"Warning: {_warning}", file=sys.stderr)
 
-    _rtf = build_rtf_header() + render_rtf(_tokens) + build_rtf_footer()
+    _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    _rtf = render_rtf(_result.tokens)
     _out_name = f"pretty_pseudocode_{_counter}.rtf" if _counter > 1 else "pretty_pseudocode.rtf"
     _out_path = _OUTPUT_DIR / _out_name
     with open(_out_path, "w", encoding="utf-8") as _f:
