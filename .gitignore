@@ -17,6 +17,13 @@ venv/
 build/
 dist/
 *.egg-info/
+*.spec
+PseudocodePrettyPrint-*.dmg
+PseudocodePrettyPrint-*.zip
+packaging/icons/app-1024.png
+
+# IDE
+.idea/
 
 # Generated documents
 outputs/*.rtf

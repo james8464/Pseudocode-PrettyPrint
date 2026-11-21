@@ -6,9 +6,11 @@ Usage:
   python3 main.py < input.txt
   python3 main.py input.txt
   python3 main.py                 # interactive mode
+  python3 main.py --gui           # desktop app
 
-Equivalent console entry point (after installing the package):
+Equivalent console entry points (after installing the package):
   pseudocode-prettyprint input.txt
+  pseudocode-prettyprint-gui
 """
 
 import contextlib

@@ -124,8 +124,13 @@ def unique_file_path(path: Path) -> Path:
 
     for number in range(2, 10_000):
         candidate = path.with_name(f"{path.stem}_{number}{path.suffix}")
-        if not candidate.exists():
+        # Use atomic check-and-act to avoid race conditions
+        try:
+            candidate.touch(exist_ok=False)
             return candidate
+        except FileExistsError:
+            # File was created by another process, try next number
+            continue
     raise FileExistsError(f"Could not find a free output name near {path}")
 
 
@@ -156,6 +161,37 @@ def write_document(path: Path, tokens: tuple[Token, ...]) -> None:
 
         # mkstemp creates files with 0600 permissions; give the final
         # document normal user-readable permissions.
+        os.chmod(temporary_path, 0o644)
+        os.replace(temporary_path, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            temporary_path.unlink()
+        raise
+
+
+def write_source(path: Path, text: str) -> None:
+    """Atomically write UTF-8 pseudocode source to *path*."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.stem}.",
+        suffix=".tmp",
+    )
+    temporary_path = Path(temporary_name)
+
+    try:
+        with os.fdopen(
+            file_descriptor,
+            "w",
+            encoding="utf-8",
+            newline="",
+        ) as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+
         os.chmod(temporary_path, 0o644)
         os.replace(temporary_path, path)
     except BaseException:

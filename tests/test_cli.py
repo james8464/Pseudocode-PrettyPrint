@@ -116,6 +116,11 @@ class CliTests(unittest.TestCase):
                 )
         self.assertEqual(context.exception.code, 2)
 
+    def test_gui_conflicts_with_output_flags(self) -> None:
+        with self.assertRaises(SystemExit) as context:
+            self.run_cli(["--gui", "-o", "report.rtf"])
+        self.assertEqual(context.exception.code, 2)
+
     def test_unterminated_string_returns_failure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "input.txt"

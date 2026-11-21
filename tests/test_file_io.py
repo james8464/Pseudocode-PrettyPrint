@@ -13,6 +13,7 @@ from pseudocode_prettyprint.file_io import (
     read_file,
     read_input,
     unique_file_path,
+    write_source,
 )
 
 
@@ -57,6 +58,24 @@ class OutputPathTests(unittest.TestCase):
             path = Path(directory) / "out.rtf"
             path.write_text("one", encoding="utf-8")
             self.assertEqual(unique_file_path(path).name, "out_2.rtf")
+
+
+class SourceWriteTests(unittest.TestCase):
+    def test_round_trip_preserves_unicode_and_newlines(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "nested" / "code.txt"
+            write_source(path, "x ← 1\nPRINT \"héllo\"\n")
+            self.assertEqual(
+                path.read_text(encoding="utf-8"),
+                "x ← 1\nPRINT \"héllo\"\n",
+            )
+
+    def test_overwrites_existing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "code.txt"
+            path.write_text("old", encoding="utf-8")
+            write_source(path, "new\n")
+            self.assertEqual(path.read_text(encoding="utf-8"), "new\n")
 
 
 class ProcessInputTests(unittest.TestCase):

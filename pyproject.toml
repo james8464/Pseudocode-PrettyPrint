@@ -32,9 +32,13 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.10",
 ]
+build = [
+    "pyinstaller>=6.10",
+]
 
 [project.scripts]
 pseudocode-prettyprint = "pseudocode_prettyprint.cli:main"
+pseudocode-prettyprint-gui = "pseudocode_prettyprint.gui:main"
 
 [project.urls]
 Repository = "https://github.com/james8464/Pseudocode-PrettyPrint"

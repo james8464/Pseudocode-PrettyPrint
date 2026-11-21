@@ -8,7 +8,8 @@ from collections.abc import Sequence
 from typing import TextIO
 
 from pseudocode_prettyprint.constants import COLOURS, Colour
-from pseudocode_prettyprint.tokeniser import Token, TokenKind, is_keyword
+from pseudocode_prettyprint.highlight import highlight_tokens
+from pseudocode_prettyprint.tokeniser import Token
 
 # RTF colours are 1-indexed; colour 0 is "auto".
 _CF: dict[Colour, int] = {
@@ -107,50 +108,11 @@ def build_rtf_footer() -> str:
     return _RTF_FOOTER
 
 
-def _next_non_ws_indices(tokens: Sequence[Token]) -> list[int | None]:
-    """For each token, the index of the next non-whitespace token (or None)."""
-    next_indices: list[int | None] = [None] * len(tokens)
-    next_index: int | None = None
-    for index in range(len(tokens) - 1, -1, -1):
-        next_indices[index] = next_index
-        if tokens[index].kind is not TokenKind.WS:
-            next_index = index
-    return next_indices
-
-
-# Identifiers introduced by these keywords are callable/type names.  This is
-# a small declaration-aware symbol table, not a capitalisation heuristic.
-_DECLARATION_KEYWORDS = frozenset({
-    "PROCEDURE", "FUNCTION", "TYPE", "CLASS", "NEW", "INHERITS",
-})
-
-
-def _find_callables(
-    tokens: Sequence[Token],
-    next_non_ws: Sequence[int | None],
-) -> frozenset[str]:
-    """Collect case-folded names introduced by declaration keywords."""
-    callables: set[str] = set()
-    for index, token in enumerate(tokens):
-        if (
-            token.kind is TokenKind.IDENT
-            and token.text.upper() in _DECLARATION_KEYWORDS
-        ):
-            next_index = next_non_ws[index]
-            if next_index is not None:
-                next_token = tokens[next_index]
-                if next_token.kind is TokenKind.IDENT:
-                    callables.add(next_token.text.casefold())
-    return frozenset(callables)
-
-
 class _RtfRenderer:
     """Stream one token sequence to an RTF stream, tracking formatting state."""
 
     def __init__(self, tokens: Sequence[Token]) -> None:
         self._tokens = tokens
-        self._next_non_ws = _next_non_ws_indices(tokens)
-        self._callables = _find_callables(tokens, self._next_non_ws)
         self._current_cf: Colour | None = None
         self._current_bold = False
 
@@ -171,114 +133,15 @@ class _RtfRenderer:
         self._set_cf(stream, Colour.BLACK)
         self._set_bold(stream, False)
 
-        after_dot = False
-        after_call_kw = False
-        after_import = False
-
-        for index, token in enumerate(self._tokens):
-            kind = token.kind
-            text = token.text
-
-            if kind is TokenKind.WS:
-                stream.write(rtf_escape(text))
-                # A dot cannot continue a member chain across whitespace.
-                after_dot = False
-                # A CALL or IMPORT does not continue across a line break.
-                if "\n" in text:
-                    after_call_kw = False
-                    after_import = False
-                continue
-
-            if kind is TokenKind.COMMENT:
-                self._set_cf(stream, Colour.COMMENT)
+        for item in highlight_tokens(self._tokens):
+            if item.colour is not None:
+                self._set_cf(stream, item.colour)
+            self._set_bold(stream, item.bold)
+            stream.write(rtf_escape(item.text))
+            if item.bold:
+                # Reset immediately so the following token starts from a
+                # known weight, matching the historical output exactly.
                 self._set_bold(stream, False)
-                stream.write(rtf_escape(text))
-                after_dot = after_call_kw = after_import = False
-                continue
-
-            if kind is TokenKind.STRING:
-                self._set_cf(stream, Colour.STRING)
-                self._set_bold(stream, False)
-                stream.write(rtf_escape(text))
-                after_dot = after_call_kw = after_import = False
-                continue
-
-            if kind is TokenKind.IDENT:
-                upper = text.upper()
-
-                if is_keyword(text):
-                    self._set_cf(stream, Colour.KEYWORD)
-                    self._set_bold(stream, True)
-                    stream.write(rtf_escape(text))
-                    self._set_bold(stream, False)
-                    after_call_kw = upper == "CALL"
-                    after_import = upper == "IMPORT"
-                    after_dot = False
-                elif after_import:
-                    self._set_cf(stream, Colour.BLACK)
-                    self._set_bold(stream, False)
-                    stream.write(rtf_escape(text))
-                    after_dot = after_call_kw = after_import = False
-                elif after_dot:
-                    self._set_cf(stream, Colour.MEMBER)
-                    self._set_bold(stream, False)
-                    stream.write(rtf_escape(text))
-                    after_dot = after_call_kw = after_import = False
-                else:
-                    next_index = self._next_non_ws[index]
-                    next_token = (
-                        self._tokens[next_index]
-                        if next_index is not None
-                        else None
-                    )
-                    looks_callable = (
-                        after_call_kw
-                        or text.casefold() in self._callables
-                        or (
-                            next_token is not None
-                            and next_token.kind is TokenKind.OP
-                            and next_token.text == "("
-                        )
-                    )
-                    if looks_callable:
-                        self._set_cf(stream, Colour.CALLABLE)
-                        self._set_bold(stream, True)
-                        stream.write(rtf_escape(text))
-                        self._set_bold(stream, False)
-                    else:
-                        self._set_cf(stream, Colour.BLACK)
-                        self._set_bold(stream, False)
-                        stream.write(rtf_escape(text))
-                    after_dot = after_call_kw = after_import = False
-                continue
-
-            if kind is TokenKind.NUMBER:
-                # A number immediately after an operator dot is an index
-                # (array.0).  A leading-decimal literal (.5) is one number
-                # token and therefore never reaches this branch with after_dot.
-                self._set_cf(
-                    stream,
-                    Colour.INDEX if after_dot else Colour.BLACK,
-                )
-                self._set_bold(stream, False)
-                stream.write(rtf_escape(text))
-                after_dot = after_call_kw = after_import = False
-                continue
-
-            if kind is TokenKind.OP and text == ".":
-                self._set_cf(stream, Colour.BLACK)
-                self._set_bold(stream, False)
-                stream.write(rtf_escape(text))
-                after_dot = True
-                after_call_kw = False
-                after_import = False
-                continue
-
-            # Operators, punctuation and anything unrecognised.
-            self._set_cf(stream, Colour.BLACK)
-            self._set_bold(stream, False)
-            stream.write(rtf_escape(text))
-            after_dot = after_call_kw = after_import = False
 
         self._set_bold(stream, False)
 

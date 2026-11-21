@@ -1,0 +1,114 @@
+name: Build desktop apps
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS-arm64
+            os: macos-14
+          - label: macOS-x86_64
+            os: macos-15-intel
+          - label: Windows-x64
+            os: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[build]"
+
+      - name: Build macOS app
+        if: runner.os == 'macOS'
+        run: |
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --name "Pseudocode PrettyPrint" \
+            --osx-bundle-identifier com.james8464.pseudocodeprettyprint \
+            --icon packaging/icons/app.icns \
+            --paths . \
+            packaging/gui_entry.py
+          VERSION=$(python -c "from pseudocode_prettyprint import __version__; print(__version__)")
+          PLIST="dist/Pseudocode PrettyPrint.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST" \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST" \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $VERSION" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :NSHumanReadableCopyright MIT Licence" "$PLIST" \
+            || /usr/libexec/PlistBuddy -c "Add :NSHumanReadableCopyright string 'MIT Licence'" "$PLIST"
+          codesign --force --deep --sign - "dist/Pseudocode PrettyPrint.app"
+          hdiutil create \
+            -volname "Pseudocode PrettyPrint" \
+            -srcfolder "dist/Pseudocode PrettyPrint.app" \
+            -ov -format UDZO \
+            "PseudocodePrettyPrint-${{ matrix.label }}.dmg"
+
+      - name: Build Windows executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python packaging/make_version_info.py build/version_info.txt
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --onefile `
+            --windowed `
+            --name "PseudocodePrettyPrint" `
+            --icon packaging/icons/app.ico `
+            --version-file build/version_info.txt `
+            --paths . `
+            packaging/gui_entry.py
+          Compress-Archive `
+            -Path "dist/PseudocodePrettyPrint.exe" `
+            -DestinationPath "PseudocodePrettyPrint-${{ matrix.label }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ matrix.label }}
+          path: |
+            PseudocodePrettyPrint-*.dmg
+            PseudocodePrettyPrint-*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" \
+                 --title "$GITHUB_REF_NAME" \
+                 --generate-notes
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber

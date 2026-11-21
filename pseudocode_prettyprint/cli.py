@@ -53,6 +53,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="overwrite an existing output file",
     )
     parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="open the desktop application",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
@@ -179,6 +184,21 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.stdout and args.output is not None:
         parser.error("--stdout and --output cannot be used together")
+    if args.gui and (args.stdout or args.output is not None):
+        parser.error("--gui cannot be combined with --stdout or --output")
+
+    if args.gui:
+        try:
+            from pseudocode_prettyprint.gui import main as gui_main
+        except ImportError as error:
+            print(
+                "Error: the desktop interface needs Tkinter, which is not "
+                f"available in this Python: {error}",
+                file=sys.stderr,
+            )
+            return 1
+        gui_arguments = [str(args.input)] if args.input is not None else []
+        return gui_main(gui_arguments)
 
     _reconfigure_stdin()
 

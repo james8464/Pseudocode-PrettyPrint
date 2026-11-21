@@ -7,6 +7,7 @@ unrecognised characters produce warnings with line/column positions.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -126,6 +127,8 @@ def tokenise(text: str, *, max_warnings: int = _DEFAULT_MAX_WARNINGS) -> Tokenis
         warnings.append(
             LexWarning(f"{suppressed} additional warning(s) suppressed", 0, 0)
         )
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Suppressed {suppressed} warning(s) (limit: {max_warnings})")
 
     return TokeniseResult(tokens=tuple(tokens), warnings=tuple(warnings))
 
