@@ -133,7 +133,10 @@ class _RtfRenderer:
         self._set_cf(stream, Colour.BLACK)
         self._set_bold(stream, False)
 
-        for item in highlight_tokens(self._tokens):
+        # Pre-compute highlighting to avoid repeated calls in the loop
+        highlighted = highlight_tokens(self._tokens)
+
+        for item in highlighted:
             if item.colour is not None:
                 self._set_cf(stream, item.colour)
             self._set_bold(stream, item.bold)

@@ -43,6 +43,9 @@ _PREVIEW_DELAY_MS = 120
 _PREVIEW_LARGE_DELAY_MS = 350
 _PREVIEW_CHAR_LIMIT = 120_000
 
+# Cache for preview optimization
+_preview_cache: dict[str, tuple[tuple[Token, ...], tuple[str, ...]]] = {}
+
 _SAMPLE = """// Pseudocode PrettyPrint example
 DECLARE total : INTEGER
 DECLARE names : ARRAY[1:3] OF STRING
@@ -166,6 +169,8 @@ class PseudocodeApp:
         self._find_window: tk.Toplevel | None = None
         self._find_entry: tk.Entry | None = None
         self._last_search = ""
+
+        self._cache_status_var = None
 
         self._theme_var = tk.StringVar(value=self.settings.theme)
         self._wrap_var = tk.BooleanVar(value=self.settings.wrap)
@@ -471,6 +476,18 @@ class PseudocodeApp:
             font=(self._ui_family, 10),
         )
         self.status_label.grid(row=0, column=0, sticky="ew", padx=18, pady=5)
+
+        # Cache status label for monitoring preview cache
+        self._cache_status_var = tk.StringVar(value="Cache: 0 entries")
+        cache_label = tk.Label(
+            self.status_bar,
+            textvariable=self._cache_status_var,
+            anchor="e",
+            font=(self._ui_family, 10),
+        )
+        cache_label.grid(row=0, column=1, sticky="e", padx=18, pady=5)
+
+        self._update_cache_status()
 
         self.position_label = tk.Label(
             self.status_bar,
@@ -822,9 +839,42 @@ class PseudocodeApp:
         self.preview.insert("1.0", text, tag)
         self.preview.configure(state="disabled")
 
+    def _update_cache_status(self) -> None:
+        """Update status with cache information for debugging."""
+        if hasattr(self, '_cache_status_var') and self._cache_status_var:
+            self._cache_status_var.set(f"Cache: {len(_preview_cache)} entries")
+
+    def _clear_cache(self) -> None:
+        """Clear the preview cache to free memory."""
+        global _preview_cache
+        _preview_cache.clear()
+        if hasattr(self, '_cache_status_var') and self._cache_status_var:
+            self._cache_status_var.set("Cache: cleared")
+
     def _refresh_preview(self) -> None:
         self._preview_job = None
         source = self.editor.get("1.0", "end-1c")
+
+        # Early exit for very large files to prevent memory issues
+        if len(source) > _PREVIEW_CHAR_LIMIT:
+            self._preview_error = True
+            self._preview_error_message = (
+                f"File too large for preview ({len(source):,} characters, "
+                f"limit {_PREVIEW_CHAR_LIMIT:,})"
+            )
+            self._tokens = ()
+            self._warnings = ()
+            self._set_preview_message(
+                "⚠ File too large for preview\n\n"
+                f"This file contains {len(source):,} characters which exceeds "
+                f"the preview limit of {_PREVIEW_CHAR_LIMIT:,}. Try editing a "
+                "smaller portion of the file.",
+                "error",
+            )
+            self._set_status(
+                f"Error: File too large ({len(source):,} chars)", error=True
+            )
+            return
 
         if not source.strip():
             self._preview_error = False
@@ -837,6 +887,18 @@ class PseudocodeApp:
                 "muted",
             )
             self._set_status("Ready — open a file or start typing.")
+            return
+
+        # Check cache for identical content to avoid re-tokenization
+        cache_key = hash(source)
+        if cache_key in _preview_cache:
+            cached_tokens, cached_warnings = _preview_cache[cache_key]
+            self._preview_error = False
+            self._preview_error_message = ""
+            self._tokens = cached_tokens
+            self._warnings = cached_warnings
+            truncated = self._render_preview(cached_tokens)
+            self._update_cache_status()
             return
 
         try:
@@ -854,6 +916,11 @@ class PseudocodeApp:
         self._preview_error_message = ""
         self._tokens = result.tokens
         self._warnings = result.warnings
+
+        # Cache the result for reuse
+        _preview_cache[cache_key] = (result.tokens, result.warnings)
+        self._update_cache_status()
+
         truncated = self._render_preview(result.tokens)
 
         message = f"Ready · {len(result.tokens):,} tokens"

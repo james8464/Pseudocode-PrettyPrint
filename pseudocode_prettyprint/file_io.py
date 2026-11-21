@@ -109,11 +109,16 @@ def choose_output_path(
         return output_dir / _output_name(counter)
 
     number = max(1, counter)
-    while True:
+    # Limit attempts to avoid infinite loops
+    max_attempts = 1000
+    for _attempt in range(max_attempts):
         candidate = output_dir / _output_name(number)
         if not candidate.exists():
             return candidate
         number += 1
+    raise FileExistsError(
+        f"Could not find a free output name after {max_attempts} attempts"
+    )
 
 
 def unique_file_path(path: Path) -> Path:
@@ -122,7 +127,7 @@ def unique_file_path(path: Path) -> Path:
     if not path.exists():
         return path
 
-    for number in range(2, 10_000):
+    for number in range(2, 1000):  # Reasonable limit to prevent infinite loops
         candidate = path.with_name(f"{path.stem}_{number}{path.suffix}")
         # Use atomic check-and-act to avoid race conditions
         try:
@@ -131,7 +136,9 @@ def unique_file_path(path: Path) -> Path:
         except FileExistsError:
             # File was created by another process, try next number
             continue
-    raise FileExistsError(f"Could not find a free output name near {path}")
+    raise FileExistsError(
+        f"Could not find a free output name near {path} after 999 attempts"
+    )
 
 
 def write_document(path: Path, tokens: tuple[Token, ...]) -> None:
